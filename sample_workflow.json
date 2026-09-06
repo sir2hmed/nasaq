@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "Research to Article",
+  "description": "Deterministic demo workflow for the core Nasaq AI path.",
+  "nodes": [
+    {
+      "id": "researcher_01",
+      "type": "researcher",
+      "position": { "x": 120, "y": 180 },
+      "config": {
+        "topic": "AI agents in education",
+        "source_count": 5,
+        "language": "en",
+        "search_depth": "basic"
+      }
+    },
+    {
+      "id": "writer_01",
+      "type": "writer",
+      "position": { "x": 460, "y": 180 },
+      "config": {
+        "style": "professional",
+        "length": "medium",
+        "format": "article",
+        "language": "same_as_input"
+      }
+    },
+    {
+      "id": "export_01",
+      "type": "export",
+      "position": { "x": 800, "y": 180 },
+      "config": {
+        "formats": ["markdown", "pdf", "docx"]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_researcher_writer",
+      "source": "researcher_01",
+      "target": "writer_01"
+    },
+    {
+      "id": "edge_writer_export",
+      "source": "writer_01",
+      "target": "export_01"
+    }
+  ]
+}
+

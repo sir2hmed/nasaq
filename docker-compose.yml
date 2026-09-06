@@ -1,0 +1,164 @@
+name: nasaq-ai
+
+# Verified development topology. Later phases extend these stable service
+# boundaries without changing public ownership responsibilities.
+services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:${LARAVEL_PORT:-8000}/api
+    environment:
+      VITE_API_BASE_URL: http://localhost:${LARAVEL_PORT:-8000}/api
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      laravel:
+        condition: service_healthy
+
+  laravel:
+    build:
+      context: ./backend-laravel
+    env_file:
+      - path: ./.env
+        required: false
+      - path: ./backend-laravel/.env.example
+        required: true
+    ports:
+      - "${LARAVEL_PORT:-8000}:8000"
+    environment:
+      APP_KEY: ${APP_KEY:-base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      APP_URL: http://localhost:${LARAVEL_PORT:-8000}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-nasaq}
+      DB_USERNAME: ${POSTGRES_USER:-nasaq}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
+      REDIS_CLIENT: predis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      FRONTEND_URL: http://localhost:${FRONTEND_PORT:-5173}
+      SANCTUM_STATEFUL_DOMAINS: localhost,localhost:${FRONTEND_PORT:-5173},localhost:${LARAVEL_PORT:-8000},127.0.0.1,127.0.0.1:${FRONTEND_PORT:-5173},127.0.0.1:${LARAVEL_PORT:-8000}
+      SESSION_COOKIE: nasaq-session
+      SESSION_SAME_SITE: lax
+      AI_SERVICE_URL: http://ai-service:8001
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-replace-with-a-long-random-token}
+      INTERNAL_CALLBACK_BASE_URL: http://laravel:8000/api/internal
+      INTERNAL_CALLBACK_TOKEN: ${INTERNAL_CALLBACK_TOKEN:-replace-with-a-different-long-random-token}
+      PHP_CLI_SERVER_WORKERS: 4
+    volumes:
+      - artifact_data:/var/www/html/storage/app/private/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ai-service:
+    build:
+      context: ./ai-service-python
+    env_file:
+      - path: ./.env
+        required: false
+      - path: ./ai-service-python/.env.example
+        required: true
+    ports:
+      - "${AI_SERVICE_PORT:-8001}:8001"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_ORIGINS: '["http://localhost:${FRONTEND_PORT:-5173}"]'
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-replace-with-a-long-random-token}
+      LARAVEL_CALLBACK_BASE_URL: http://laravel:8000/api/internal
+      LARAVEL_CALLBACK_TOKEN: ${INTERNAL_CALLBACK_TOKEN:-replace-with-a-different-long-random-token}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-tavily}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      TAVILY_BASE_URL: ${TAVILY_BASE_URL:-https://api.tavily.com}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-5.6}
+      TTS_PROVIDER: ${TTS_PROVIDER:-openai}
+      TTS_API_KEY: ${TTS_API_KEY:-}
+      TTS_MODEL: ${TTS_MODEL:-tts-1}
+      TTS_VOICE: ${TTS_VOICE:-alloy}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      PROVIDER_TIMEOUT_SECONDS: ${PROVIDER_TIMEOUT_SECONDS:-60}
+      INTEGRATION_TIMEOUT_SECONDS: ${INTEGRATION_TIMEOUT_SECONDS:-15}
+      GOOGLE_DRIVE_UPLOAD_URL: ${GOOGLE_DRIVE_UPLOAD_URL:-https://www.googleapis.com/upload/drive/v3/files}
+      YOUTUBE_UPLOAD_URL: ${YOUTUBE_UPLOAD_URL:-https://www.googleapis.com/upload/youtube/v3/videos}
+      SIDE_EFFECT_IDEMPOTENCY_TTL_SECONDS: ${SIDE_EFFECT_IDEMPOTENCY_TTL_SECONDS:-604800}
+    volumes:
+      - artifact_data:/app/artifacts
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build:
+      context: ./ai-service-python
+    command: ["celery", "-A", "app.worker:celery_app", "worker", "--loglevel=INFO"]
+    env_file:
+      - path: ./.env
+        required: false
+      - path: ./ai-service-python/.env.example
+        required: true
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      LARAVEL_CALLBACK_BASE_URL: http://laravel:8000/api/internal
+      LARAVEL_CALLBACK_TOKEN: ${INTERNAL_CALLBACK_TOKEN:-replace-with-a-different-long-random-token}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-tavily}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      TAVILY_BASE_URL: ${TAVILY_BASE_URL:-https://api.tavily.com}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-5.6}
+      TTS_PROVIDER: ${TTS_PROVIDER:-openai}
+      TTS_API_KEY: ${TTS_API_KEY:-}
+      TTS_MODEL: ${TTS_MODEL:-tts-1}
+      TTS_VOICE: ${TTS_VOICE:-alloy}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      PROVIDER_TIMEOUT_SECONDS: ${PROVIDER_TIMEOUT_SECONDS:-60}
+      INTEGRATION_TIMEOUT_SECONDS: ${INTEGRATION_TIMEOUT_SECONDS:-15}
+      GOOGLE_DRIVE_UPLOAD_URL: ${GOOGLE_DRIVE_UPLOAD_URL:-https://www.googleapis.com/upload/drive/v3/files}
+      YOUTUBE_UPLOAD_URL: ${YOUTUBE_UPLOAD_URL:-https://www.googleapis.com/upload/youtube/v3/videos}
+      SIDE_EFFECT_IDEMPOTENCY_TTL_SECONDS: ${SIDE_EFFECT_IDEMPOTENCY_TTL_SECONDS:-604800}
+    volumes:
+      - artifact_data:/app/artifacts
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout=3 | grep -q pong"]
+      interval: 15s
+      timeout: 8s
+      retries: 6
+
+  postgres:
+    image: postgres:18.4-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nasaq}
+      POSTGRES_USER: ${POSTGRES_USER:-nasaq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nasaq} -d ${POSTGRES_DB:-nasaq}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:8.8.0-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  postgres_data:
+  redis_data:
+  artifact_data:

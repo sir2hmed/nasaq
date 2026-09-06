@@ -1,0 +1,21 @@
+[project]
+name = "nasaq-ai-service"
+version = "0.1.0"
+description = "FastAPI and Celery orchestration service for Nasaq AI"
+requires-python = ">=3.14"
+
+[tool.pytest.ini_options]
+addopts = "-q --basetemp=.pytest-tmp"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "RUF"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

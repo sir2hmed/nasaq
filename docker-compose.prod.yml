@@ -1,0 +1,223 @@
+name: nasaq-ai-production
+
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./infrastructure/nginx/nasaq.conf:/etc/nginx/conf.d/default.conf:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      frontend:
+        condition: service_healthy
+      laravel:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    networks:
+      - edge
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    expose:
+      - "5173"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - edge
+
+  laravel:
+    build:
+      context: ./backend-laravel
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      APP_NAME: Nasaq AI
+      APP_ENV: production
+      APP_KEY: ${APP_KEY:?Set APP_KEY in .env.production}
+      APP_DEBUG: "false"
+      APP_URL: ${PUBLIC_URL:?Set PUBLIC_URL in .env.production}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      APP_LOCALE: en
+      APP_FALLBACK_LOCALE: en
+      FRONTEND_URL: ${PUBLIC_URL:?Set PUBLIC_URL in .env.production}
+      NASAQ_DEMO_MODE: ${NASAQ_DEMO_MODE:-true}
+      HEALTH_CHECK_DEPENDENCIES: "true"
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: ${LOG_LEVEL:-warning}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-nasaq}
+      DB_USERNAME: ${POSTGRES_USER:-nasaq}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      REDIS_CLIENT: predis
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.production}
+      REDIS_PORT: 6379
+      SESSION_DRIVER: database
+      SESSION_LIFETIME: ${SESSION_LIFETIME:-120}
+      SESSION_COOKIE: ${SESSION_COOKIE:-nasaq-session}
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-true}
+      SESSION_HTTP_ONLY: "true"
+      SESSION_SAME_SITE: lax
+      SANCTUM_STATEFUL_DOMAINS: ${PUBLIC_HOST:?Set PUBLIC_HOST without a scheme}
+      AI_SERVICE_URL: http://ai-service:8001
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN in .env.production}
+      AI_SERVICE_TIMEOUT_SECONDS: ${AI_SERVICE_TIMEOUT_SECONDS:-15}
+      INTERNAL_CALLBACK_BASE_URL: http://laravel:8000/api/internal
+      INTERNAL_CALLBACK_TOKEN: ${INTERNAL_CALLBACK_TOKEN:?Set INTERNAL_CALLBACK_TOKEN in .env.production}
+      FILESYSTEM_DISK: local
+      MAIL_MAILER: log
+      PHP_CLI_SERVER_WORKERS: ${PHP_CLI_SERVER_WORKERS:-4}
+    volumes:
+      - artifact_data:/var/www/html/storage/app/private/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - edge
+      - backend
+
+  ai-service:
+    build:
+      context: ./ai-service-python
+    restart: unless-stopped
+    expose:
+      - "8001"
+    environment: &python-environment
+      APP_ENV: production
+      DEMO_MODE: ${NASAQ_DEMO_MODE:-true}
+      ARTIFACT_ROOT: /app/artifacts
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.production}@redis:6379/0
+      CHECK_DEPENDENCIES: "true"
+      ALLOWED_ORIGINS: '["${PUBLIC_URL:?Set PUBLIC_URL in .env.production}"]'
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN in .env.production}
+      LARAVEL_CALLBACK_BASE_URL: http://laravel:8000/api/internal
+      LARAVEL_CALLBACK_TOKEN: ${INTERNAL_CALLBACK_TOKEN:?Set INTERNAL_CALLBACK_TOKEN in .env.production}
+      CALLBACK_TIMEOUT_SECONDS: ${CALLBACK_TIMEOUT_SECONDS:-10}
+      RETRY_MAX_ATTEMPTS: ${RETRY_MAX_ATTEMPTS:-3}
+      RETRY_BASE_DELAY_SECONDS: ${RETRY_BASE_DELAY_SECONDS:-0.5}
+      RETRY_MAX_DELAY_SECONDS: ${RETRY_MAX_DELAY_SECONDS:-5}
+      RETRY_JITTER_RATIO: ${RETRY_JITTER_RATIO:-0.25}
+      CANCELLATION_TTL_SECONDS: ${CANCELLATION_TTL_SECONDS:-86400}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-tavily}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      TAVILY_BASE_URL: ${TAVILY_BASE_URL:-https://api.tavily.com}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-5.6}
+      TTS_PROVIDER: ${TTS_PROVIDER:-openai}
+      TTS_API_KEY: ${TTS_API_KEY:-}
+      TTS_MODEL: ${TTS_MODEL:-tts-1}
+      TTS_VOICE: ${TTS_VOICE:-alloy}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      PROVIDER_TIMEOUT_SECONDS: ${PROVIDER_TIMEOUT_SECONDS:-60}
+      INTEGRATION_TIMEOUT_SECONDS: ${INTEGRATION_TIMEOUT_SECONDS:-15}
+      GOOGLE_DRIVE_UPLOAD_URL: ${GOOGLE_DRIVE_UPLOAD_URL:-https://www.googleapis.com/upload/drive/v3/files}
+      YOUTUBE_UPLOAD_URL: ${YOUTUBE_UPLOAD_URL:-https://www.googleapis.com/upload/youtube/v3/videos}
+      SIDE_EFFECT_IDEMPOTENCY_TTL_SECONDS: ${SIDE_EFFECT_IDEMPOTENCY_TTL_SECONDS:-604800}
+    volumes:
+      - artifact_data:/app/artifacts
+    depends_on:
+      redis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+      - egress
+
+  celery-worker:
+    build:
+      context: ./ai-service-python
+    command: ["celery", "-A", "app.worker:celery_app", "worker", "--loglevel=INFO"]
+    restart: unless-stopped
+    environment: *python-environment
+    volumes:
+      - artifact_data:/app/artifacts
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout=3 | grep -q pong"]
+      interval: 15s
+      timeout: 8s
+      retries: 6
+    stop_grace_period: 90s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+      - egress
+
+  postgres:
+    image: postgres:18.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nasaq}
+      POSTGRES_USER: ${POSTGRES_USER:-nasaq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+
+  redis:
+    image: redis:8.8.0-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.production}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.production}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$${REDIS_PASSWORD} redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  artifact_data:
+
+networks:
+  edge:
+  backend:
+    internal: true
+  egress:

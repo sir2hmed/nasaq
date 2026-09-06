@@ -1,0 +1,45 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies and build output
+node_modules/
+vendor/
+.venv/
+__pycache__/
+*.py[cod]
+dist/
+build/
+coverage/
+.pytest_cache/
+.pytest-tmp/
+.pytest-*/
+.ruff_cache/
+.phpunit.cache/
+
+# Application runtime
+storage/app/artifacts/*
+!storage/app/artifacts/.gitkeep
+backend-laravel/storage/logs/*.log
+ai-service-python/artifacts/*
+!ai-service-python/artifacts/.gitkeep
+
+# Local tooling
+.tmp/
+.tools/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Archives and duplicate packages
+*.zip
+*.tar.gz
+shr/
